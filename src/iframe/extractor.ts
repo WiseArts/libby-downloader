@@ -7,7 +7,7 @@
  * Types are available at compile time but stripped at runtime.
  */
 
-import type { BookData, BookMetadata, Chapter } from '../types/extension-book';
+import type { BookData, BookMetadata, Chapter, TocEntry } from '../types/extension-book';
 import { MessageTypes } from '../types/messages';
 
 // Extend window interface for Libby-specific globals
@@ -17,6 +17,32 @@ declare global {
     getBIF?: () => Promise<BIFObject>;
     __odreadCmptParams: number[] | null;
   }
+}
+
+/**
+ * A node in the BIF nav.toc tree — may have nested children under `contents`
+ */
+interface TocNode {
+  title: string;
+  path: string;
+  contents?: TocNode[];
+}
+
+/**
+ * Recursively flatten a TOC tree into a sorted list of leaf/chapter entries.
+ * Entries with `contents` are skipped in favour of their children unless they
+ * have a unique path that is not duplicated by any child.
+ */
+function flattenToc(nodes: TocNode[]): TocNode[] {
+  const result: TocNode[] = [];
+  for (const node of nodes) {
+    if (node.contents && node.contents.length > 0) {
+      result.push(...flattenToc(node.contents));
+    } else {
+      result.push(node);
+    }
+  }
+  return result;
 }
 
 /**
@@ -39,10 +65,7 @@ interface BIFObject {
     }>;
     description?: string;
     nav?: {
-      toc?: Array<{
-        title: string;
-        path: string;
-      }>;
+      toc?: TocNode[];
     };
   };
   objects: {
@@ -174,14 +197,22 @@ async function extractBookData(): Promise<BookData> {
     cumulativeTime += duration;
   }
 
-  // Get chapter titles from TOC
+  // Extract actual TOC (real chapter list with positions within each part)
+  const toc: TocEntry[] = [];
   if (BIF.map.nav?.toc) {
     const spineToIndex = BIF.map.spine.map((x) => x['-odread-original-path']);
-    for (const tocChapter of BIF.map.nav.toc) {
-      const spinePath = tocChapter.path.split('#')[0];
+    const flatEntries = flattenToc(BIF.map.nav.toc);
+    for (const tocEntry of flatEntries) {
+      const hashIdx = tocEntry.path.indexOf('#');
+      const spinePath = hashIdx !== -1 ? tocEntry.path.substring(0, hashIdx) : tocEntry.path;
+      const timeOffset = hashIdx !== -1 ? parseFloat(tocEntry.path.substring(hashIdx + 1)) : 0;
       const spineIndex = spineToIndex.indexOf(spinePath);
-      if (spineIndex !== -1 && chapters[spineIndex]) {
-        chapters[spineIndex].title = tocChapter.title;
+      if (spineIndex !== -1) {
+        toc.push({
+          title: tocEntry.title,
+          part: spineIndex,
+          startTime: isNaN(timeOffset) ? 0 : timeOffset,
+        });
       }
     }
   }
@@ -200,6 +231,7 @@ async function extractBookData(): Promise<BookData> {
   return {
     metadata,
     chapters,
+    toc: toc.length > 0 ? toc : undefined,
   };
 }
 

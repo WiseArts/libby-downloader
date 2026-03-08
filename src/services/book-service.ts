@@ -60,13 +60,13 @@ export class BookService {
       const files = await fs.readdir(bookPath);
 
       // Count MP3 files
-      const mp3Files = files.filter((f) => f.endsWith('.mp3') && f.startsWith('chapter-'));
+      const mp3Files = files.filter((f) => f.endsWith('.mp3'));
       if (mp3Files.length === 0) {
         return null;
       }
 
-      // Check for metadata.json (try both with and without leading dot)
-      const metadataFiles = ['metadata.json', '.metadata.json'];
+      // Check for metadata.json (try both with and without leading dot, and download.json)
+      const metadataFiles = ['metadata.json', '.metadata.json', 'download.json'];
       let hasMetadata = false;
       let metadataJson;
 
@@ -100,7 +100,7 @@ export class BookService {
       return {
         name,
         path: bookPath,
-        chapterCount: mp3Files.length,
+        chapterCount: metadataJson?.toc?.length ?? mp3Files.length,
         hasMetadata,
         isTagged,
         isMerged,

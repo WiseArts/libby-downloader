@@ -3,7 +3,7 @@
  * Handles creation and saving of metadata.json files
  */
 
-import type { BookMetadata, Chapter } from '../types/extension-book';
+import type { BookMetadata, Chapter, TocEntry } from '../types/extension-book';
 import { sanitizeFilename } from '../shared/validators';
 
 export class MetadataWriter {
@@ -30,9 +30,10 @@ export class MetadataWriter {
   async saveMetadata(
     metadata: BookMetadata,
     chapters: Chapter[],
-    bookTitle: string
+    bookTitle: string,
+    toc?: TocEntry[]
   ): Promise<number> {
-    const metadataContent = JSON.stringify({ metadata, chapters }, null, 2);
+    const metadataContent = JSON.stringify({ metadata, chapters, toc }, null, 2);
 
     // Use data URL instead of blob URL (blob URLs don't work in service workers)
     const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(metadataContent);

@@ -18,6 +18,7 @@ interface BookMetadata {
     title: string;
     authors: string[];
     narrator?: string;
+    narrators?: string[];
     coverUrl?: string;
     description?: string | { full: string; short: string };
   };
@@ -25,6 +26,11 @@ interface BookMetadata {
     index: number;
     title: string;
     duration: number;
+  }>;
+  toc?: Array<{
+    title: string;
+    part: number;
+    startTime: number;
   }>;
 }
 
@@ -254,30 +260,39 @@ export class MergeService {
    * Load and validate book metadata from metadata.json
    */
   private async loadMetadata(folderPath: string): Promise<BookMetadata> {
-    const metadataPath = path.join(folderPath, 'metadata.json');
+    const metadataFiles = ['metadata.json', '.metadata.json', 'download.json'];
 
-    try {
-      const content = await fs.readFile(metadataPath, 'utf-8');
-      const metadata = JSON.parse(content) as BookMetadata;
+    for (const filename of metadataFiles) {
+      try {
+        const metadataPath = path.join(folderPath, filename);
+        const content = await fs.readFile(metadataPath, 'utf-8');
+        const metadata = JSON.parse(content) as BookMetadata;
 
-      // Validate required fields
-      if (!metadata.metadata?.title) {
-        throw new Error('metadata.json missing required field: title');
-      }
-      if (!metadata.metadata?.authors || metadata.metadata.authors.length === 0) {
-        throw new Error('metadata.json missing required field: authors');
-      }
-      if (!metadata.chapters || metadata.chapters.length === 0) {
-        throw new Error('metadata.json has no chapters');
-      }
+        // Validate required fields
+        if (!metadata.metadata?.title) {
+          throw new Error(`${filename} missing required field: title`);
+        }
+        if (!metadata.metadata?.authors || metadata.metadata.authors.length === 0) {
+          throw new Error(`${filename} missing required field: authors`);
+        }
+        if (!metadata.chapters || metadata.chapters.length === 0) {
+          throw new Error(`${filename} has no chapters`);
+        }
 
-      return metadata;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Error('metadata.json not found. Download book metadata first.');
+        // Normalize narrators -> narrator
+        if (!metadata.metadata.narrator && metadata.metadata.narrators?.length) {
+          metadata.metadata.narrator = metadata.metadata.narrators[0];
+        }
+
+        return metadata;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
       }
-      throw error;
     }
+
+    throw new Error('metadata.json not found. Download book metadata first.');
   }
 
   /**
@@ -285,20 +300,30 @@ export class MergeService {
    */
   private async findChapterFiles(folderPath: string): Promise<string[]> {
     const files = await fs.readdir(folderPath);
-    const chapterFiles = files
-      .filter((f) => f.startsWith('chapter-') && f.endsWith('.mp3'))
-      .sort((a, b) => {
-        // Extract chapter numbers: chapter-1.mp3 -> 1
+    const mp3Files = files.filter((f) => f.endsWith('.mp3'));
+
+    if (mp3Files.length === 0) {
+      throw new Error('No chapter MP3 files found. Download chapters first.');
+    }
+
+    // If files use chapter-NNN.mp3 naming, sort numerically
+    const chapterNamed = mp3Files.filter((f) => f.startsWith('chapter-'));
+    if (chapterNamed.length > 0) {
+      return chapterNamed.sort((a, b) => {
         const numA = parseInt(a.match(/chapter-(\d+)/)?.[1] || '0', 10);
         const numB = parseInt(b.match(/chapter-(\d+)/)?.[1] || '0', 10);
         return numA - numB;
       });
-
-    if (chapterFiles.length === 0) {
-      throw new Error('No chapter MP3 files found. Download chapters first.');
     }
 
-    return chapterFiles;
+    // Otherwise sort by modification time (sequential download order)
+    const fileStats = await Promise.all(
+      mp3Files.map(async (f) => ({
+        name: f,
+        mtime: (await fs.stat(path.join(folderPath, f))).mtimeMs,
+      }))
+    );
+    return fileStats.sort((a, b) => a.mtime - b.mtime).map((f) => f.name);
   }
 
   /**
@@ -331,38 +356,83 @@ export class MergeService {
     chapterFiles: string[],
     metadata: BookMetadata
   ): Promise<ChapterInfo[]> {
+    // Get actual duration of each part file
+    const partDurations: number[] = [];
+    for (let i = 0; i < chapterFiles.length; i++) {
+      const filePath = path.join(folderPath, chapterFiles[i]);
+      try {
+        partDurations.push(await this.getAudioDuration(filePath));
+      } catch {
+        partDurations.push(metadata.chapters[i]?.duration || 0);
+      }
+    }
+
+    // Use toc entries for chapter markers if available
+    if (metadata.toc && metadata.toc.length > 0) {
+      return this.buildChaptersFromToc(chapterFiles, folderPath, partDurations, metadata.toc);
+    }
+
+    // Fallback: one chapter per audio file
     const chapters: ChapterInfo[] = [];
     let currentTime = 0;
-
     for (let i = 0; i < chapterFiles.length; i++) {
       const file = chapterFiles[i];
-      const filePath = path.join(folderPath, file);
-
-      // Get actual duration from file (fallback to metadata.json)
-      let duration: number;
-      try {
-        duration = await this.getAudioDuration(filePath);
-      } catch {
-        duration = metadata.chapters[i]?.duration || 0;
-      }
-
-      const chapterTitle = metadata.chapters[i]?.title || `Chapter ${i + 1}`;
+      const duration = partDurations[i];
       const startTimeMs = Math.floor(currentTime * 1000);
       const endTimeMs = Math.floor((currentTime + duration) * 1000);
-
       chapters.push({
         file,
-        filePath,
+        filePath: path.join(folderPath, file),
         index: i,
-        title: chapterTitle,
+        title: metadata.chapters[i]?.title || `Part ${i + 1}`,
         startTime: startTimeMs,
         endTime: endTimeMs,
         duration,
       });
-
       currentTime += duration;
     }
+    return chapters;
+  }
 
+  /**
+   * Build chapter info from TOC entries with absolute timestamps
+   */
+  private buildChaptersFromToc(
+    chapterFiles: string[],
+    folderPath: string,
+    partDurations: number[],
+    toc: Array<{ title: string; part: number; startTime: number }>
+  ): ChapterInfo[] {
+    // Calculate cumulative start time for each part
+    const partStartTimes: number[] = [];
+    let cumulative = 0;
+    for (const d of partDurations) {
+      partStartTimes.push(cumulative);
+      cumulative += d;
+    }
+    const totalDuration = cumulative;
+
+    const chapters: ChapterInfo[] = [];
+    for (let i = 0; i < toc.length; i++) {
+      const entry = toc[i];
+      const absStart = (partStartTimes[entry.part] ?? 0) + entry.startTime;
+      const nextEntry = toc[i + 1];
+      const absEnd = nextEntry
+        ? (partStartTimes[nextEntry.part] ?? 0) + nextEntry.startTime
+        : totalDuration;
+
+      // Use the part file that contains this chapter as the reference file
+      const file = chapterFiles[entry.part] ?? chapterFiles[0];
+      chapters.push({
+        file,
+        filePath: path.join(folderPath, file),
+        index: i,
+        title: entry.title,
+        startTime: Math.floor(absStart * 1000),
+        endTime: Math.floor(absEnd * 1000),
+        duration: absEnd - absStart,
+      });
+    }
     return chapters;
   }
 

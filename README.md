@@ -1,23 +1,34 @@
 # Libby Downloader
 
-[![CI](https://github.com/pdugan20/libby-downloader/workflows/CI/badge.svg)](https://github.com/pdugan20/libby-downloader/actions)
 [![Node.js](https://img.shields.io/node/v/next?logo=node.js)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?logo=opensourceinitiative&logoColor=white)](https://opensource.org/licenses/MIT)
 
+> **Fork of [pdugan20/libby-downloader](https://github.com/pdugan20/libby-downloader)** with expanded CLI functionality and improved chapter handling.
+
 Download audiobooks from Libby to your computer for offline listening.
+
+## What's Different in This Fork
+
+- **Accurate chapter splitting**: The extension now extracts the full table of contents (TOC) from Libby's BIF object, including chapter titles and their exact time offsets within each audio part. The `split` command uses these timestamps to cut the downloaded parts into individual chapter files — no re-encoding.
+- **Better metadata**: `metadata.json` now includes a `toc` array with all real chapter titles and positions, not just one entry per audio file.
+- **`libby split`**: New command to split downloaded multi-chapter audio parts into individual chapter MP3s. Each output file is named by chapter title (e.g. `001-Finding-Me.mp3`) and tagged with full ID3 metadata in one step.
+- **`libby rename`**: New command to rename hash-based filenames (from older downloads) to sequential `chapter-NNN.mp3` names.
+- **Compatibility with older downloads**: The CLI can now discover and process books downloaded by other tools, including books with `download.json` metadata and hash-named MP3 files.
 
 ## Features
 
 - **One-Click Downloads**: Download audiobooks with a single click from your browser
-- **Interactive CLI**: Optionally add book title, author, narrator, and cover art to MP3 files
-- **M4B Audiobook Creation**: Merge individual chapter MP3s into a single M4B audiobook file with chapter markers
+- **Full TOC extraction**: Captures all real chapter titles and timestamps from Libby
+- **Chapter splitting**: Split multi-chapter audio parts into individual files at exact timestamps
+- **Interactive CLI**: Add book title, author, narrator, and cover art to MP3 files
+- **M4B Audiobook Creation**: Merge chapters into a single M4B audiobook file with correct chapter markers
 
 ## Quick Start
 
 ### Extension Only (Download Audiobooks)
 
 ```bash
-git clone https://github.com/pdugan20/libby-downloader.git
+git clone https://github.com/YOUR_USERNAME/libby-downloader.git
 cd libby-downloader
 npm install
 npm run build:extension
@@ -65,10 +76,39 @@ libby
 
 Options:
 
+- Split parts into chapters (uses TOC)
+- Rename chapters (fix hash filenames)
 - Tag MP3 files (add metadata)
 - Merge chapters into M4B audiobook
 - List all downloaded books
 - View book details
+
+### Split Command
+
+Splits downloaded audio parts into individual chapter MP3s using the TOC timestamps in `metadata.json`. Each file is named by chapter title and tagged with full ID3 metadata in one step.
+
+```bash
+# Interactive (shows list of books)
+libby split
+
+# Split specific folder
+libby split "Book Title"
+libby split ~/Downloads/libby-downloads/BookTitle/
+```
+
+Output files are named `NNN-Chapter-Title.mp3` (e.g. `001-Finding-Me.mp3`, `004-Chapter-1-Running.mp3`).
+Original part files are moved to a `parts/` subfolder for safety.
+
+> Requires a `metadata.json` with a `toc` array — download with the updated extension first.
+
+### Rename Command
+
+Renames hash-based filenames (e.g. `a3f8c2...mp3`) to sequential `chapter-NNN.mp3` names. Useful for books downloaded with older versions of the extension.
+
+```bash
+libby rename
+libby rename "Book Title"
+```
 
 ### Tag Command
 
@@ -97,7 +137,7 @@ libby merge ~/Downloads/libby-downloads/BookTitle/
 
 Merges individual chapter MP3 files into a single M4B audiobook with:
 
-- Chapter markers (one per MP3 file)
+- Chapter markers at correct timestamps (uses TOC if available, otherwise one per file)
 - Embedded metadata (title, author, narrator, cover art)
 - 64kbps AAC mono audio (optimized for voice)
 - M4B output file saved in the same directory

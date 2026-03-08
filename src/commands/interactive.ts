@@ -7,12 +7,16 @@ import chalk from 'chalk';
 import { BookInfo } from '../types/book';
 import { tagFiles } from './tag';
 import { listBooks } from './list';
+import { renameChapters } from './rename';
+import { splitChapters } from './split';
 import { BookService } from '../services/book-service';
 import { BookSelector } from '../ui/prompts/book-selector';
 import { BookPresenter } from '../ui/presenters/book-presenter';
 import { StatusPresenter } from '../ui/presenters/status-presenter';
 
 enum MainAction {
+  SPLIT = 'Split parts into chapters (uses TOC)',
+  RENAME = 'Rename chapters (fix hash filenames)',
   TAG = 'Tag MP3 files (add metadata)',
   MERGE = 'Merge chapters into single file',
   LIST = 'List all downloaded books',
@@ -57,6 +61,8 @@ export async function runInteractive(): Promise<void> {
         name: 'action',
         message: 'What would you like to do?',
         choices: [
+          MainAction.SPLIT,
+          MainAction.RENAME,
           MainAction.TAG,
           MainAction.MERGE,
           MainAction.LIST,
@@ -68,6 +74,14 @@ export async function runInteractive(): Promise<void> {
     ]);
 
     switch (action) {
+      case MainAction.SPLIT:
+        await handleSplitAction(books, bookSelector, bookPresenter);
+        break;
+
+      case MainAction.RENAME:
+        await handleRenameAction(books, bookSelector, bookPresenter);
+        break;
+
       case MainAction.TAG:
         await handleTagAction(books, bookSelector, bookPresenter);
         break;
@@ -95,6 +109,42 @@ export async function runInteractive(): Promise<void> {
       console.log(); // Blank line between actions
     }
   }
+}
+
+/**
+ * Handle split action - select book to split into real chapters
+ */
+async function handleSplitAction(
+  books: BookInfo[],
+  bookSelector: BookSelector,
+  bookPresenter: BookPresenter
+): Promise<void> {
+  const selected = await bookSelector.selectBook(books, {
+    message: 'Which book do you want to split into chapters?',
+  });
+
+  if (!selected || Array.isArray(selected)) return;
+
+  console.log(chalk.bold(`\n📖 ${bookPresenter.getTitle(selected)}\n`));
+  await splitChapters(selected.path);
+}
+
+/**
+ * Handle rename action - select book to rename chapters
+ */
+async function handleRenameAction(
+  books: BookInfo[],
+  bookSelector: BookSelector,
+  bookPresenter: BookPresenter
+): Promise<void> {
+  const selected = await bookSelector.selectBook(books, {
+    message: 'Which book do you want to rename chapters for?',
+  });
+
+  if (!selected || Array.isArray(selected)) return;
+
+  console.log(chalk.bold(`\n📖 ${bookPresenter.getTitle(selected)}\n`));
+  await renameChapters(selected.path);
 }
 
 /**

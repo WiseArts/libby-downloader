@@ -24,7 +24,7 @@ async function handleStartDownload(
   bookData: BookData,
   tabId: number
 ): Promise<{ bookId: string; completed: number; failed: number; total: number }> {
-  const { metadata, chapters } = bookData;
+  const { metadata, chapters, toc } = bookData;
 
   logger.info('Starting download', { title: metadata.title, chapters: chapters.length });
 
@@ -56,7 +56,7 @@ async function handleStartDownload(
 
   // Save metadata file
   try {
-    await metadataWriter.saveMetadata(metadata, chapters, metadata.title);
+    await metadataWriter.saveMetadata(metadata, chapters, metadata.title, toc);
   } catch (error) {
     console.error('[Libby Downloader] Failed to save metadata file:', error);
   }

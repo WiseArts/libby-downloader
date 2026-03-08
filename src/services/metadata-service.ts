@@ -22,6 +22,7 @@ interface BookMetadata {
     subtitle?: string;
     authors: string[];
     narrator?: string;
+    narrators?: string[];
     coverUrl?: string;
     description?: string | { full: string; short: string };
   };
@@ -207,7 +208,7 @@ export class MetadataService {
       return {
         title: bookMetadata.metadata.title,
         authors: bookMetadata.metadata.authors,
-        narrator: bookMetadata.metadata.narrator,
+        narrator: bookMetadata.metadata.narrator ?? bookMetadata.metadata.narrators?.[0],
         coverUrl: bookMetadata.metadata.coverUrl,
         description,
         chapters: bookMetadata.chapters,
@@ -230,7 +231,7 @@ export class MetadataService {
    * Read book metadata JSON file
    */
   private async readBookMetadata(folderPath: string): Promise<BookMetadata | null> {
-    const metadataFiles = ['metadata.json', '.metadata.json'];
+    const metadataFiles = ['metadata.json', '.metadata.json', 'download.json'];
 
     for (const filename of metadataFiles) {
       try {

@@ -6,6 +6,8 @@ import { tagFiles } from './commands/tag';
 import { mergeBook } from './commands/merge';
 import { listBooks } from './commands/list';
 import { runInteractive } from './commands/interactive';
+import { renameCommand } from './commands/rename';
+import { splitCommand } from './commands/split';
 
 /**
  * Handle CLI errors with proper formatting
@@ -70,6 +72,32 @@ program
       });
     } catch (error) {
       handleCliError(error, 'Tag');
+    }
+  });
+
+// Split command
+program
+  .command('split [folder]')
+  .description('Split downloaded parts into individual chapter MP3s using TOC timestamps')
+  .action(async (folder) => {
+    try {
+      await splitCommand(folder);
+    } catch (error) {
+      handleCliError(error, 'Split');
+    }
+  });
+
+// Rename command
+program
+  .command('rename [folder]')
+  .description(
+    'Rename hash-named chapter MP3s to chapter-NNN.mp3 format (interactive if no folder specified)'
+  )
+  .action(async (folder) => {
+    try {
+      await renameCommand(folder);
+    } catch (error) {
+      handleCliError(error, 'Rename');
     }
   });
 

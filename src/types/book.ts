@@ -14,9 +14,11 @@ export interface BookInfo {
       title: string;
       authors: string[];
       narrator?: string;
+      narrators?: string[];
       coverUrl?: string;
     };
     chapters: Array<{ title: string }>;
+    toc?: Array<{ title: string; part: number; startTime: number }>;
   };
   downloadedAt?: Date;
 }

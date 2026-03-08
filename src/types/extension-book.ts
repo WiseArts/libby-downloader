@@ -22,9 +22,20 @@ export interface Chapter {
   endTime?: number;
 }
 
+/**
+ * A single entry from the book's table of contents.
+ * Each TOC entry maps to a position within one of the downloadable audio parts.
+ */
+export interface TocEntry {
+  title: string;
+  part: number; // zero-based index into the parts/chapters array
+  startTime: number; // time offset in seconds within that part
+}
+
 export interface BookData {
   metadata: BookMetadata;
-  chapters: Chapter[];
+  chapters: Chapter[]; // downloadable audio parts (one per file)
+  toc?: TocEntry[]; // actual book chapters with positions
 }
 
 /**

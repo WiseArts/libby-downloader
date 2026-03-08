@@ -23,7 +23,7 @@ export class BookPresenter {
    * Get the narrator of a book
    */
   getNarrator(book: BookInfo): string | undefined {
-    return book.metadataJson?.metadata.narrator;
+    return book.metadataJson?.metadata.narrator ?? book.metadataJson?.metadata.narrators?.[0];
   }
 
   /**
